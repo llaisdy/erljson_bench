@@ -5,13 +5,15 @@
 workers() -> 10.
 iters() -> 1000.
 
-%% Just make sure we have everythign on the
+%% Just make sure we have everything on the
 %% code path.
 smoke() ->
     lists:map(fun(Module) ->
         {ok, true} = Module:decode(<<"true">>),
         {ok, <<"true">>} = Module:encode(true)
     end, [json, ejson_test, mochijson2]),
+    true = jsx:decode(<<"true">>),
+    <<"true">> = jsx:encode(true),
     true = jsonx:decode(<<"true">>),
     <<"true">> = jsonx:encode(true),
     true = jiffy:decode(<<"true">>),
@@ -27,12 +29,23 @@ load_json(DocName) ->
     iolist_to_binary(Json).
 
 
-test_encode(Workers, Iters, Module, Doc) ->
+test_encode(Workers, Iters, Module, DocIn) ->
     Self = self(),
+    Doc = case Module of
+	jsx -> jsxify(DocIn);
+	_ -> DocIn
+	  end,
     Fun = fun() -> run_encode(Self, Iters, Module, Doc, 0) end,
     [spawn(Fun) || _ <- lists:seq(1, Workers)],
     Total = collect_times(Workers, 0),
     io:format("encode: ~15s: ~16b~n", [Module, Total]).
+
+jsxify({Items}) ->
+    lists:map(fun({K, {V}}) ->
+		      {K, jsxify({V})};
+		 ({K, V}) ->
+		      {K, V}
+	      end,Items).
 
 run_encode(Dst, 0, _, _, Total) ->
     Dst ! {time, Total};
@@ -71,7 +84,7 @@ main([DocName]) ->
     Doc = load_doc(DocName),
     Json = load_json(DocName),
    
-    Modules = shuffle([jiffy, jsonx, json, ejson_test, mochijson2]),
+    Modules = shuffle([jsx, jiffy, jsonx, json, ejson_test, mochijson2]),
 
     io:format("Module order is random!~n~n", []),
 
